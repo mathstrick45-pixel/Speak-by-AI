@@ -1,40 +1,161 @@
-# Speak-by-AI
-Speak by <!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Speak Practice — AI Teacher</title>
   <meta name="theme-color" content="#ffffff" />
-  <link rel="manifest" href="manifest.json" />
+  <link rel="manifest" href="/manifest.json" />
   <style>
-    :root { --bg:#f7fafc; --card:#ffffff; --text:#111; --muted:#6b7280; --ok:#16a34a; --bad:#dc2626; --accent:#2563eb;}
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
-    .container{max-width:900px;margin:0 auto;padding:18px}
-    .card{background:var(--card);border-radius:18px;box-shadow:0 6px 24px rgba(0,0,0,.06);padding:18px}
-    h1{margin:6px 0 2px;font-size:28px} .sub{color:var(--muted);margin:0 0 14px}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    textarea{width:100%;min-height:110px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:12px;font-size:16px}
-    .btn{appearance:none;border:0;border-radius:12px;padding:12px 16px;font-weight:600;cursor:pointer}
-    .primary{background:var(--accent);color:#fff} .ghost{background:#eef2ff;color:#1e3a8a}
-    .danger{background:#fee2e2;color:#991b1b} .ok{background:#dcfce7;color:#14532d}
-    .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;background:#f1f5f9;font-size:13px;margin-right:6px;margin-top:6px}
-    .out{white-space:pre-wrap;font-size:18px}
-    .tag-bad{background:#fee2e2;color:#991b1b} .tag-ok{background:#dcfce7;color:#14532d}
-    mark.bad{background:#fee2e2;padding:2px 4px;border-radius:6px} mark.fix{background:#dcfce7;padding:2px 4px;border-radius:6px}
-    .hint{color:var(--muted);font-size:13px}
-    .footer{color:var(--muted);font-size:12px;margin-top:10px}
+    :root{--bg:#f6f8fb;--card:#fff;--accent:#2563eb;--muted:#6b7280}
+    *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,Arial;background:var(--bg);color:#111}
+    .wrap{max-width:820px;margin:18px auto;padding:18px}
+    .card{background:var(--card);padding:18px;border-radius:14px;box-shadow:0 10px 30px rgba(2,6,23,.06)}
+    h1{margin:0 0 6px} .sub{color:var(--muted);margin:0 0 12px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    button{padding:10px 12px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
+    .primary{background:var(--accent);color:#fff} .danger{background:#fee2e2;color:#891b1b}
+    .ghost{background:#eef2ff;color:#1e3a8a}
+    textarea{width:100%;min-height:110px;padding:12px;border-radius:10px;border:1px solid #eef2f6;font-size:16px}
+    .out{margin-top:12px;background:#f8fafc;padding:12px;border-radius:10px;border:1px solid #eef2f6}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#f1f5f9;margin-right:8px}
+    .issue{background:#fff6f6;border-left:4px solid #fca5a5;padding:10px;border-radius:6px;margin-top:8px}
+    .good{background:#f0fdf4;border-left:4px solid #a7f3d0;padding:10px;border-radius:6px;margin-top:8px}
+    .small{font-size:13px;color:var(--muted)}
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="wrap">
     <div class="card">
       <h1>Speak Practice — AI Teacher</h1>
-      <p class="sub"> बोलो ➜ transcript ➜ mistakes ➜ corrected sentence + feedback + audio </p>
+      <p class="sub">Speak in English, get corrected sentence + explanation from the AI teacher.</p>
 
-      <div class="row">
-        <button id="recBtn" class="btn primary">🎙️ Start Speaking</button>
-        <button id="stopBtn" class="btn danger">⏹ Stop</button>
+      <div class="controls">
+        <button id="startBtn" class="primary">🎙️ Start Speaking</button>
+        <button id="stopBtn" class="danger">⏹ Stop</button>
+        <button id="playBtn" class="ghost">🔊 Play Corrected</button>
+        <button id="evaluateBtn" class="primary">✅ Ask Teacher</button>
+      </div>
+
+      <label class="small">Transcript / Type here:</label>
+      <textarea id="text" placeholder="Speak or type a sentence..."></textarea>
+
+      <div class="out" id="status">Status: idle</div>
+
+      <h3 style="margin-top:10px">Teacher feedback</h3>
+      <div id="result" class="out">
+        <div id="loading" style="display:none">Working…</div>
+        <div id="correction"></div>
+        <div id="explanation" style="margin-top:10px"></div>
+      </div>
+
+      <div style="margin-top:12px" class="small">
+        Tip: Use Chrome on Android for best speech-recognition results. <br>
+        This app uses a serverless function to call OpenAI — set your API key in Vercel as <code>OPENAI_API_KEY</code>.
+      </div>
+    </div>
+  </div>
+
+<script>
+/* -------------------------
+   Speech Recognition (client)
+   ------------------------- */
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const playBtn = document.getElementById('playBtn');
+const evaluateBtn = document.getElementById('evaluateBtn');
+const textEl = document.getElementById('text');
+const statusEl = document.getElementById('status');
+const correctionEl = document.getElementById('correction');
+const explanationEl = document.getElementById('explanation');
+const loadingEl = document.getElementById('loading');
+
+let recognition = null;
+function initSR(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) {
+    alert('Speech Recognition not supported in this browser. Use Chrome on Android.');
+    return null;
+  }
+  const r = new SR();
+  r.lang = 'en-US';
+  r.interimResults = true;
+  r.continuous = true;
+  r.onresult = (ev) => {
+    let interim = '';
+    let final = '';
+    for(let i=ev.resultIndex;i<ev.results.length;i++){
+      const res = ev.results[i];
+      if(res.isFinal) final += res[0].transcript + ' ';
+      else interim += res[0].transcript + ' ';
+    }
+    // append final & interim sensibly:
+    if(final) textEl.value = (textEl.value.trim() + ' ' + final).trim();
+    else if(interim) textEl.value = (textEl.value.trim() + ' ' + interim).trim();
+  };
+  r.onstart = ()=> statusEl.textContent = 'Status: listening...';
+  r.onend = ()=> statusEl.textContent = 'Status: idle';
+  r.onerror = (e)=> console.error('sr err', e);
+  return r;
+}
+
+startBtn.onclick = ()=>{
+  if(!recognition) recognition = initSR();
+  if(!recognition) return;
+  recognition.start();
+};
+stopBtn.onclick = ()=> recognition && recognition.stop();
+
+/* -------------------------
+   Ask teacher (server)
+   ------------------------- */
+async function askTeacher(sentence){
+  if(!sentence || !sentence.trim()) return;
+  loadingEl.style.display = 'block';
+  correctionEl.innerHTML = '';
+  explanationEl.innerHTML = '';
+  try {
+    const resp = await fetch('/api/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: sentence })
+    });
+    if(!resp.ok){
+      const txt = await resp.text();
+      throw new Error(txt || 'Server error');
+    }
+    const data = await resp.json();
+    // expected: { corrected: "...", explanation: "..." }
+    correctionEl.innerHTML = data.corrected ? `<strong>Corrected:</strong> <div style="margin-top:6px">${escapeHtml(data.corrected)}</div>` : '';
+    explanationEl.innerHTML = data.explanation ? `<strong>Teacher notes:</strong><div style="margin-top:6px">${escapeHtml(data.explanation).replace(/\n/g,'<br>')}</div>` : '';
+  } catch(err){
+    correctionEl.innerHTML = `<div class="issue">Error: ${escapeHtml(err.message || String(err))}</div>`;
+  } finally {
+    loadingEl.style.display = 'none';
+  }
+}
+evaluateBtn.onclick = ()=> askTeacher(textEl.value);
+
+/* Play corrected with TTS */
+playBtn.onclick = ()=> {
+  const content = correctionEl.textContent || correctionEl.innerText;
+  if(!content) return;
+  const utter = new SpeechSynthesisUtterance(content.replace(/^Corrected:\s*/i,''));
+  utter.lang = 'en-US';
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utter);
+};
+
+/* small helper */
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* Auto-evaluate on speech end */
+if('SpeechRecognition' in window || 'webkitSpeechRecognition' in window){
+  // attach onend to auto-evaluate if desired (kept manual in this final)
+}
+</script>
+</body>
+</html>        <button id="stopBtn" class="btn danger">⏹ Stop</button>
         <button id="speakCorrectBtn" class="btn ok">🔊 Play Corrected</button>
         <button id="clearBtn" class="btn ghost">🧹 Clear</button>
       </div>
