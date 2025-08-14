@@ -1,1 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Speak by AI</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 50px;
+    }
+    textarea {
+      width: 80%;
+      height: 100px;
+      font-size: 16px;
+      padding: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Speak by AI</h1>
+  <p>Type some text below and click Speak:</p>
+  <textarea id="textToSpeak" placeholder="Type something..."></textarea><br>
+  <button onclick="speakText()">Speak</button>
 
+  <script>
+    function speakText() {
+      let text = document.getElementById("textToSpeak").value;
+      if (!text) {
+        text = "Hello, this is your Speak by AI app!";
+      }
+      let utterance = new SpeechSynthesisUtterance(text);
+      speechSynthesis.speak(utterance);
+    }
+  </script>
+</body>
+</html>
