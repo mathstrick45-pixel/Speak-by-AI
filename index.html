@@ -1,0 +1,270 @@
+# Speak-by-AI
+Speak by <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Speak Practice — AI Teacher</title>
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    :root { --bg:#f7fafc; --card:#ffffff; --text:#111; --muted:#6b7280; --ok:#16a34a; --bad:#dc2626; --accent:#2563eb;}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    .container{max-width:900px;margin:0 auto;padding:18px}
+    .card{background:var(--card);border-radius:18px;box-shadow:0 6px 24px rgba(0,0,0,.06);padding:18px}
+    h1{margin:6px 0 2px;font-size:28px} .sub{color:var(--muted);margin:0 0 14px}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    textarea{width:100%;min-height:110px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:12px;font-size:16px}
+    .btn{appearance:none;border:0;border-radius:12px;padding:12px 16px;font-weight:600;cursor:pointer}
+    .primary{background:var(--accent);color:#fff} .ghost{background:#eef2ff;color:#1e3a8a}
+    .danger{background:#fee2e2;color:#991b1b} .ok{background:#dcfce7;color:#14532d}
+    .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;background:#f1f5f9;font-size:13px;margin-right:6px;margin-top:6px}
+    .out{white-space:pre-wrap;font-size:18px}
+    .tag-bad{background:#fee2e2;color:#991b1b} .tag-ok{background:#dcfce7;color:#14532d}
+    mark.bad{background:#fee2e2;padding:2px 4px;border-radius:6px} mark.fix{background:#dcfce7;padding:2px 4px;border-radius:6px}
+    .hint{color:var(--muted);font-size:13px}
+    .footer{color:var(--muted);font-size:12px;margin-top:10px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Speak Practice — AI Teacher</h1>
+      <p class="sub"> बोलो ➜ transcript ➜ mistakes ➜ corrected sentence + feedback + audio </p>
+
+      <div class="row">
+        <button id="recBtn" class="btn primary">🎙️ Start Speaking</button>
+        <button id="stopBtn" class="btn danger">⏹ Stop</button>
+        <button id="speakCorrectBtn" class="btn ok">🔊 Play Corrected</button>
+        <button id="clearBtn" class="btn ghost">🧹 Clear</button>
+      </div>
+
+      <p class="hint" style="margin-top:8px">
+        Tip: Android Chrome में best results. iOS Safari में STT कभी-कभी limited होता है.
+      </p>
+
+      <h3>Transcript / Type here</h3>
+      <textarea id="input" placeholder="Speak and it will appear here… Or type your sentence to evaluate."></textarea>
+
+      <div class="row" style="margin-top:10px">
+        <button id="evaluateBtn" class="btn primary">✅ Evaluate</button>
+        <label class="pill"><input type="checkbox" id="autoEval" checked /> Auto-evaluate on stop</label>
+      </div>
+
+      <h3 style="margin-top:18px">Feedback</h3>
+      <div id="feedback"></div>
+
+      <h3 style="margin-top:18px">Corrected Sentence</h3>
+      <div id="corrected" class="out"></div>
+
+      <div class="footer">PWA: offline once opened • No data leaves your device</div>
+    </div>
+  </div>
+
+  <script>
+    /*********************
+     * SPEECH RECOGNITION
+     *********************/
+    const recBtn = document.getElementById('recBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const input = document.getElementById('input');
+    const autoEval = document.getElementById('autoEval');
+    let recognition = null, listening = false;
+
+    function initSTT(){
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if(!SR){ alert('Speech Recognition not supported in this browser. Try Chrome on Android.'); return null; }
+      const r = new SR();
+      r.lang = 'en-US';
+      r.interimResults = true;
+      r.continuous = true;
+      r.onresult = (e)=>{
+        let finalText = '';
+        for(let i=e.resultIndex; i<e.results.length; i++){
+          finalText += e.results[i][0].transcript;
+        }
+        input.value = input.value.replace(/\s+$/,'') + (finalText ? ' ' + finalText : '');
+      };
+      r.onend = ()=>{
+        listening = false;
+        recBtn.textContent = '🎙️ Start Speaking';
+        if(autoEval.checked) evaluate();
+      };
+      r.onerror = (e)=> console.warn('STT error', e.error);
+      return r;
+    }
+
+    recBtn.onclick = ()=>{
+      if(listening){ recognition && recognition.stop(); return; }
+      if(!recognition) recognition = initSTT();
+      if(!recognition) return;
+      input.value = input.value.trim();
+      recognition.start(); listening = true;
+      recBtn.textContent = '🎙️ Listening…';
+    };
+    stopBtn.onclick = ()=> recognition && recognition.stop();
+
+    /*********************
+     * TTS (Play corrected)
+     *********************/
+    document.getElementById('speakCorrectBtn').onclick = ()=>{
+      const text = document.getElementById('corrected').textContent.trim();
+      if(!text) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    };
+
+    document.getElementById('clearBtn').onclick = ()=>{
+      input.value = ''; document.getElementById('feedback').innerHTML = '';
+      document.getElementById('corrected').innerHTML = '';
+    };
+
+    /******************************
+     * LIGHTWEIGHT “AI TEACHER”
+     * (Rule-based grammar fixer)
+     ******************************/
+    const VERB_S = {go:'goes', do:'does', have:'has', eat:'eats', like:'likes', play:'plays', say:'says', want:'wants', need:'needs', make:'makes', take:'takes', come:'comes', read:'reads', watch:'watches', study:'studies'};
+    const BE_FOR_SUBJ = {'i':'am','you':'are','we':'are','they':'are','he':'is','she':'is','it':'is'};
+
+    function capitalizeSent(s){ return s.replace(/(^\s*[a-z])/, m=>m.toUpperCase()); }
+    function endWithPeriod(s){ return /[.!?]\s*$/.test(s)? s : s.trim()+'.'; }
+
+    function fixArticles(tokens, notes){
+      for(let i=0;i<tokens.length-1;i++){
+        const w = tokens[i].toLowerCase(), nxt = tokens[i+1]?.toLowerCase() || '';
+        if((w==='a'||w==='an') && /^[aeiou]/.test(nxt)){
+          if(w==='a'){ tokens[i]='an'; notes.push(['article',`Use “an” before vowel sound: "${nxt}"`]); }
+        } else if((w==='a'||w==='an') && !/^[aeiou]/.test(nxt)){
+          if(w==='an'){ tokens[i]='a'; notes.push(['article',`Use “a” before consonant sound: "${nxt}"`]); }
+        }
+      }
+    }
+
+    function fixHeSheVerb(tokens, notes){
+      // pattern: he/she/it + base verb -> add -s (for common verbs)
+      for(let i=0;i<tokens.length-1;i++){
+        const s = tokens[i].toLowerCase(), v = tokens[i+1].toLowerCase();
+        if(['he','she','it'].includes(s)){
+          if(VERB_S[v]){ tokens[i+1] = VERB_S[v]; notes.push(['verb',`With "${tokens[i]}", use "${VERB_S[v]}" not "${v}".`]); }
+          else if(/^[a-z]+$/.test(v) && !/(s|sh|ch|x|z|o|ies)$/.test(v)){
+            tokens[i+1] = v+'s'; notes.push(['verb',`With "${tokens[i]}", add -s: “${v}s”.`]);
+          }
+        }
+      }
+    }
+
+    function fixBeVerb(tokens, notes){
+      // e.g., I good -> I am good; He happy -> He is happy
+      for(let i=0;i<tokens.length-1;i++){
+        const s = tokens[i].toLowerCase(), nxt = tokens[i+1].toLowerCase();
+        if(BE_FOR_SUBJ[s] && !['am','is','are','was','were'].includes(nxt) && /^[a-z]+$/.test(nxt)){
+          tokens.splice(i+1,0,BE_FOR_SUBJ[s]);
+          notes.push(['be-verb',`Add “${BE_FOR_SUBJ[s]}” after “${tokens[i]}”.`]);
+          i++;
+        }
+      }
+    }
+
+    function fixIcap(tokens, notes){
+      for(let i=0;i<tokens.length;i++){
+        if(tokens[i]==='i'){ tokens[i]='I'; notes.push(['capitalization','Capitalize “I”.']); }
+      }
+    }
+
+    function fixAint(tokens, notes){
+      // don't have no -> don't have any
+      for(let i=0;i<tokens.length-1;i++){
+        if(tokens[i].toLowerCase()==='no' && i>0 && /(don't|didn't|doesn't|can't|won't)/i.test(tokens[i-1])){
+          tokens[i]='any'; notes.push(['negation','Use “any” with negatives (not “no”).']);
+        }
+      }
+    }
+
+    function pluralAfterNumber(tokens, notes){
+      for(let i=0;i<tokens.length-1;i++){
+        if(/^\d+$/.test(tokens[i]) && /^[a-z]+$/.test(tokens[i+1]) && !/s$/.test(tokens[i+1])){
+          tokens[i+1] = tokens[i+1]+'s';
+          notes.push(['plural',`After numbers, use plural: “${tokens[i+1]}”.`]);
+        }
+      }
+    }
+
+    function tidySpaces(s){return s.replace(/\s+/g,' ').trim();}
+
+    function correctSentence(raw){
+      let original = tidySpaces(raw);
+      if(!original) return { corrected:'', notes:[], diffHTML:'' };
+
+      // tokenize by spaces, keep punctuation separately
+      const tokens = original
+        .replace(/([,.!?])/g,' $1 ')
+        .replace(/\s+/g,' ')
+        .split(' ')
+        .filter(Boolean);
+
+      const notes = [];
+
+      fixIcap(tokens, notes);
+      fixBeVerb(tokens, notes);
+      fixHeSheVerb(tokens, notes);
+      fixArticles(tokens, notes);
+      fixAint(tokens, notes);
+      pluralAfterNumber(tokens, notes);
+
+      // join & cosmetic fixes
+      let out = tokens.join(' ')
+        .replace(/\s+([,.!?])/g,'$1'); // remove space before punctuation
+      out = capitalizeSent(out);
+      out = endWithPeriod(out);
+
+      // build simple diff (mark words that changed)
+      const diffHTML = highlightDiff(original, out);
+
+      return { corrected: out, notes, diffHTML };
+    }
+
+    function highlightDiff(a,b){
+      const A = tidySpaces(a).split(/\s+/), B = tidySpaces(b).split(/\s+/);
+      let html = [], i=0, j=0;
+      while(i<A.length || j<B.length){
+        if(A[i]===B[j]){ html.push(B[j]); i++; j++; continue; }
+        if(A[i] && !B.includes(A[i])){ html.push(`<mark class="bad">${A[i]}</mark>`); i++; continue; }
+        if(B[j] && !A.includes(B[j])){ html.push(`<mark class="fix">${B[j]}</mark>`); j++; continue; }
+        // fallback
+        if(B[j]){ html.push(`<mark class="fix">${B[j]}</mark>`); j++; i++; }
+        else i++;
+      }
+      let s = html.join(' ');
+      return s.replace(/\s+([,.!?])/g,'$1');
+    }
+
+    /***************
+     * UI Handlers
+     ***************/
+    const feedbackEl = document.getElementById('feedback');
+    const correctedEl = document.getElementById('corrected');
+    const evaluateBtn = document.getElementById('evaluateBtn');
+
+    function evaluate(){
+      const {corrected, notes, diffHTML} = correctSentence(input.value);
+      correctedEl.innerHTML = corrected ? diffHTML : '';
+      if(!corrected){ feedbackEl.innerHTML = '<span class="hint">Say or type a sentence to get feedback.</span>'; return; }
+
+      if(notes.length===0){
+        feedbackEl.innerHTML = `<span class="pill tag-ok">✔ Looks good!</span>`;
+      } else {
+        feedbackEl.innerHTML = notes.map(([type,msg])=>`<span class="pill tag-bad">❗ ${msg}</span>`).join('');
+      }
+    }
+    evaluateBtn.onclick = evaluate;
+
+    /***************
+     * PWA register
+     ***************/
+    if('serviceWorker' in navigator){
+      window.addEventListener('load', ()=> navigator.serviceWorker.register('./sw.js'));
+    }
+  </script>
+</body>
+</html>
